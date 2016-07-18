@@ -11,68 +11,72 @@ const cache = require('memory-cache');
 const validUrl = require('valid-url');
 const Verror = require('verror');
 
+function getSyndicationResponseHandler(resourceType, parser, next) {
+  return (response) => {
+    let syndicationXml = '';
+    response.on('data', (chunk) => {
+      syndicationXml += chunk;
+    });
+
+    response.on('end', () => {
+      if (response.statusCode === 200) {
+        parser(syndicationXml);
+        next();
+      } else if (response.statusCode === 404) {
+        const err = new Verror(`${resourceType} Not Found`);
+        err.statusCode = 404;
+        next(err);
+      } else {
+        const err = new Verror('Syndication HTTP Error');
+        err.statusCode = response.statusCode;
+        next(err);
+      }
+    });
+  };
+}
+
+function getSyndicationResponse(url, resourceType, parser, next) {
+  http
+    .get(url, getSyndicationResponseHandler(resourceType, parser, next))
+    .on('error', (e) => {
+      const err = new Verror(e, 'Syndication Server Error');
+      err.statusCode = 500;
+      next(err);
+    });
+}
+
 function getDetails(req, res, next) {
   assert(validUrl.isUri(req.urlForGp), `Invalid URL: '${req.urlForGp}'`);
 
-  http.get(req.urlForGp, (response) => {
-    let syndicationXml = '';
-    response.on('data', (chunk) => {
-      syndicationXml += chunk;
-    });
-
-    response.on('end', () => {
-      if (response.statusCode === 200) {
-        // eslint-disable-next-line no-param-reassign
-        req.gpDetails = gpDetailsParser(syndicationXml);
-        next();
-      } else if (response.statusCode === 404) {
-        const err = new Verror('GP Not Found');
-        err.statusCode = 404;
-        next(err);
-      } else {
-        const err = new Verror('Syndication HTTP Error');
-        err.statusCode = response.statusCode;
-        next(err);
-      }
-    });
-  }).on('error', (e) => {
-    const err = new Verror(e, 'Syndication Server Error');
-    err.statusCode = 500;
-    next(err);
-  });
+  getSyndicationResponse(
+    req.urlForGp,
+    'GP Practice Details',
+    (syndicationXml) => {
+      // eslint-disable-next-line no-param-reassign
+      req.gpDetails = gpDetailsParser(syndicationXml);
+    },
+    next
+  );
 }
 
 function getOpeningTimes(req, res, next) {
-  http.get(req.gpDetails.overviewLink, (response) => {
-    let syndicationXml = '';
-    response.on('data', (chunk) => {
-      syndicationXml += chunk;
-    });
+  assert.ok(validUrl.isUri(req.gpDetails.overviewLink),
+    `Invalid URL: '${req.gpDetails.overviewLink}'`);
 
-    response.on('end', () => {
-      if (response.statusCode === 200) {
-        // eslint-disable-next-line no-param-reassign
-        req.gpDetails.openingTimes = {
-          reception: gpOpeningTimesParser('reception', syndicationXml),
-          surgery: gpOpeningTimesParser('surgery', syndicationXml),
-        };
-        next();
-      } else if (response.statusCode === 404) {
-        const err = new Verror('GP Opening Times Not Found');
-        err.statusCode = 404;
-        next(err);
-      } else {
-        const err = new Verror('Syndication HTTP Error');
-        err.statusCode = response.statusCode;
-        next(err);
-      }
-    });
-  }).on('error', (e) => {
-    const err = new Verror(e, 'Syndication Server Error');
-    err.statusCode = 500;
-    next(err);
-  });
+  getSyndicationResponse(
+    req.gpDetails.overviewLink,
+    'GP Practice Opening Times',
+    (syndicationXml) => {
+    // eslint-disable-next-line no-param-reassign
+      req.gpDetails.openingTimes = {
+        reception: gpOpeningTimesParser('reception', syndicationXml),
+        surgery: gpOpeningTimesParser('surgery', syndicationXml),
+      };
+    },
+    next
+  );
 }
+
 function render(req, res) {
   res.render('index', {
     title: 'GP Practice Details',
