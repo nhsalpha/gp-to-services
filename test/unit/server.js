@@ -6,6 +6,7 @@ const expect = chai.expect;
 const chaiHttp = require('chai-http');
 const nock = require('nock');
 const cache = require('memory-cache');
+const cheerio = require('cheerio');
 const app = require('../../server.js');
 const getSampleResponse = require('./lib/getSampleResponse');
 
@@ -13,16 +14,16 @@ chai.use(chaiHttp);
 
 describe('Server', () => {
   const baseUrl = 'http://v1.syndication.nhschoices.nhs.uk';
-  const requestRoute = /\/organisations\/gppractices\/odscode\/[0-9]+.xml\?apikey=[a-z]*/;
-  const requestRoute2 = /\/organisations\/gppractices\/[0-9]+\/overview.xml\?apikey=[a-z]*/;
+  const odscodeRouteRegEx = /\/organisations\/gppractices\/odscode\/[0-9]+.xml\?apikey=[a-z]*/;
+  const overviewRouteRegEx = /\/organisations\/gppractices\/[0-9]+\/overview.xml\?apikey=[a-z]*/;
   it('should get details for a known GP', (done) => {
     const gpId = '12345';
     cache.put(gpId, { supplier_name: 'EMIS' });
     nock(baseUrl)
-      .get(requestRoute)
+      .get(odscodeRouteRegEx)
       .reply(200, getSampleResponse('gp_practice_by_ods_code'));
     nock(baseUrl)
-      .get(requestRoute2)
+      .get(overviewRouteRegEx)
       .reply(200, getSampleResponse('gp_overview'));
     chai.request(app)
       .get(`/gpdetails/${gpId}`)
@@ -30,14 +31,17 @@ describe('Server', () => {
         expect(err).to.be.null;
         expect(res).to.have.status(200);
         expect(res).to.be.html;
-        expect(res.text).to.contain('A Ditri');
-        expect(res.text).to.contain('Opening Times');
+        const $ = cheerio.load(res.text);
+        expect($('div.gp-details p').first().text()).to.equal('A Ditri');
+        expect($('div.surgery-opening-times ul li p').first().text()).to.equal('Monday');
+        expect($('div.surgery-opening-times ul li ul li')
+          .first().text()).to.equal('08:00 to 13:00');
         done();
       });
   });
   it('should return 404 for an unknown GP', (done) => {
     nock(baseUrl)
-      .get(requestRoute)
+      .get(odscodeRouteRegEx)
       .reply(404);
     chai.request(app)
       .get('/gpdetails/12410')
@@ -49,7 +53,7 @@ describe('Server', () => {
   });
   it('should return 500 for syndication server error', (done) => {
     nock(baseUrl)
-      .get(requestRoute)
+      .get(odscodeRouteRegEx)
       .reply(500);
     chai.request(app)
       .get('/gpdetails/12410')
