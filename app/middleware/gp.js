@@ -79,7 +79,6 @@ function getOpeningTimes(req, res, next) {
 
 function render(req, res) {
   res.render('index', {
-    title: 'GP Practice Details',
     daysOfTheWeek,
     gpDetails: req.gpDetails,
   });
