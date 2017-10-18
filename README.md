@@ -1,3 +1,7 @@
+# DEPRECATED - no longer actively maintained
+
+---
+
 # gp-to-services
 [![Build Status](https://travis-ci.org/nhsuk/gp-to-services.svg?branch=master)](https://travis-ci.org/nhsuk/gp-to-services)
 [![Coverage Status](https://coveralls.io/repos/github/nhsuk/gp-to-services/badge.svg?branch=master)](https://coveralls.io/github/nhsuk/gp-to-services?branch=master)
